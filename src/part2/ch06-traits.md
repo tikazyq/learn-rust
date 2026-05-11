@@ -403,7 +403,7 @@ Rust 的 **object safety rules**(对象安全规则)一句话:
 ### 工程含义
 
 设计 trait 时如果想保留 dyn 选项,避免:
-- 返回 Self(改成 `Box<dyn Self>` 或具体类型)
+- 返回 Self(改成 `Box<dyn TraitName>`,例如下面例子里的 `Box<dyn Animal>`,或某个具体类型)
 - 泛型方法(改成 trait 自身的关联类型,或拆成两个 trait)
 
 例子:
