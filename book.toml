@@ -1,0 +1,48 @@
+[book]
+authors = ["Marvin"]
+language = "zh-CN"
+multilingual = false
+src = "src"
+title = "Rust by Migration"
+description = "从 Go / C# / TypeScript 到 Rust 的系统工程师转型"
+
+[rust]
+edition = "2021"
+
+[output.html]
+default-theme = "navy"
+preferred-dark-theme = "navy"
+git-repository-url = ""
+edit-url-template = ""
+mathjax-support = false
+copy-fonts = true
+no-section-label = false
+
+[output.html.fold]
+enable = true
+level = 1
+
+[output.html.playground]
+editable = true
+copyable = true
+copy-js = true
+line-numbers = true
+runnable = true
+
+[output.html.search]
+enable = true
+limit-results = 30
+teaser-word-count = 30
+use-boolean-and = true
+boost-title = 2
+boost-hierarchy = 1
+boost-paragraph = 1
+expand = true
+heading-split-level = 3
+
+[output.html.print]
+enable = true
+page-break = true
+
+[preprocessor.index]
+[preprocessor.links]

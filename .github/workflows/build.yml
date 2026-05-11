@@ -1,0 +1,87 @@
+name: Build & Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  MDBOOK_VERSION: "0.4.40"
+
+jobs:
+  build:
+    name: Build mdBook
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache mdbook binary
+        id: cache-mdbook
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/mdbook
+          key: mdbook-${{ env.MDBOOK_VERSION }}
+
+      - name: Install mdbook
+        if: steps.cache-mdbook.outputs.cache-hit != 'true'
+        run: |
+          curl -sL "https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
+            | tar xz -C ~/.cargo/bin
+
+      - name: Build book
+        run: mdbook build
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: book
+          path: book/
+          retention-days: 7
+
+  test-rust-snippets:
+    name: Test Rust code snippets
+    runs-on: ubuntu-latest
+    # 暂时不阻塞 CI:章节里的 rust 代码块依赖 reqwest / tokio 等外部 crate,
+    # 在没配 Cargo.toml 之前 mdbook test 会失败。等章节正文补全后,
+    # 把 rust 块该标 `no_run` / `ignore` 的标了,再去掉这行。
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache mdbook binary
+        id: cache-mdbook
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/mdbook
+          key: mdbook-${{ env.MDBOOK_VERSION }}
+
+      - name: Install mdbook
+        if: steps.cache-mdbook.outputs.cache-hit != 'true'
+        run: |
+          curl -sL "https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
+            | tar xz -C ~/.cargo/bin
+
+      - name: Test Rust code blocks compile
+        # `mdbook test` compiles every ```rust block (unless marked `ignore` / `no_run`).
+        # Catches broken examples before they ship.
+        run: mdbook test
+
+  link-check:
+    name: Check for broken links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lychee link checker
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: --no-progress --exclude-mail './**/*.md'
+          fail: false  # warn don't fail; many docs links churn

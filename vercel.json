@@ -1,0 +1,8 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "curl -sL https://github.com/rust-lang/mdBook/releases/download/v0.4.40/mdbook-v0.4.40-x86_64-unknown-linux-gnu.tar.gz | tar xz && ./mdbook build",
+  "outputDirectory": "book",
+  "installCommand": "true",
+  "cleanUrls": true,
+  "trailingSlash": false
+}
