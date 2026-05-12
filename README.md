@@ -91,16 +91,16 @@ rust-by-migration/
 |---|---|
 | 12 周计划 | ✅ 完整 |
 | 引言 / 大纲 | ✅ 完整 |
-| Ch 1 为什么 Rust 不一样 | 🟡 部分(从对话历史恢复) |
-| Ch 2 Ownership 是工程纪律 | 🟡 部分 |
-| Ch 3 Borrowing 与 Lifetime | 🟡 部分 |
-| Ch 4 Struct/Enum/Pattern Matching | 🟡 部分 |
-| Ch 5 错误处理工程化 | 🟡 部分 |
-| Ch 6 Trait | 🟡 部分 |
-| Ch 7-20 | ⏳ 骨架 |
-| 附录 A-E | ⏳ 骨架 |
+| Ch 1-3 Part I 心智模型重置 | ✅ 完整 |
+| Ch 4-6 Part II 类型系统(struct/enum、错误处理、trait) | ✅ 完整 |
+| Ch 7 泛型与生命周期进阶 | ✅ 完整 |
+| Ch 8-10 Part III 内存与资源 | ✅ 完整 |
+| Ch 11-13 Part IV 并发与异步 | ✅ 完整 |
+| Ch 14-16 Part V 工程实践 | ✅ 完整 |
+| Ch 17-20 Part VI 深水区(含 Capstone Mini-Tokio) | ✅ 完整 |
+| 附录 A-E | ✅ 完整 |
 
-🟡 / ⏳ 章节里每个待补段落都用 `⚠️ 本节正文待补` 标记,渲染后醒目可见。
+> 各章节为正文 draft。边学边在每章末尾"📝 学习记录"填日期、卡点、关键收获;发现错漏或可深化处欢迎 PR。
 
 ---
 
