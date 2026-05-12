@@ -20,9 +20,9 @@
 我们要做的 mini-tokio:
 
 - ✅ `block_on(future)`:阻塞当前线程直到 Future 完成
-- ✅ `spawn(future)`:把 Future 加入调度,返回 `JoinHandle`
+- ✅ `spawn(future)`:把 Future 加入调度(本章教学版本只负责提交,**不返回 `JoinHandle`**;习题里会让你补)
 - ✅ `Sleep::new(duration)`:返回一个 Future,睡 duration 后 ready
-- ✅ `channel::<T>()`:async mpsc
+- ✅ 一个**简化的单生产者 channel**(`Sender` 不 Clone),教学到 waker 注册 + race 修复就够;真 mpsc 留作习题
 - ✅ 多线程 work-stealing
 
 不做:
@@ -30,6 +30,7 @@
 - ❌ 真正的 IO(epoll / kqueue / IOCP)——简化课程范围
 - ❌ Pin 投影宏 / 自适应缓冲
 - ❌ 性能调优
+- ❌ `JoinHandle` / 多生产者 channel(故意省,留作毕业题)
 
 代码总量 ~500 行,3 个文件搞定。
 
@@ -126,6 +127,14 @@ fn main() {
 加入任务队列:
 
 ```rust,ignore
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+struct Inner {
+    ready: Mutex<VecDeque<Arc<Task>>>,
+    cvar: Condvar,
+    alive: AtomicUsize,   // 还没跑完的 task 数,归零时让 run_until_idle 返回
+}
+
 struct Task {
     future: Mutex<Option<Pin<Box<dyn Future<Output = ()> + Send>>>>,
     queue: Arc<Inner>,
@@ -148,15 +157,20 @@ impl Mini {
             future: Mutex::new(Some(Box::pin(future))),
             queue: self.inner.clone(),
         });
+        self.inner.alive.fetch_add(1, Ordering::SeqCst);
         self.inner.ready.lock().unwrap().push_back(task.clone());
         self.inner.cvar.notify_one();
     }
 
-    pub fn run(&self) {
+    /// 跑到所有 spawn 的 task 都完成为止再返回。
+    /// 真 Tokio 的 runtime 一直运行,我们这里做教学版,**有限运行**才好让示例程序退出。
+    pub fn run_until_idle(&self) {
         loop {
+            if self.inner.alive.load(Ordering::SeqCst) == 0 { return; }
             let task = {
                 let mut q = self.inner.ready.lock().unwrap();
                 while q.is_empty() {
+                    if self.inner.alive.load(Ordering::SeqCst) == 0 { return; }
                     q = self.inner.cvar.wait(q).unwrap();
                 }
                 q.pop_front().unwrap()
@@ -167,13 +181,18 @@ impl Mini {
             if let Some(mut fut) = fut_slot.take() {
                 match fut.as_mut().poll(&mut cx) {
                     Poll::Pending => *fut_slot = Some(fut),
-                    Poll::Ready(()) => {}   // task 完成,future 已 drop
+                    Poll::Ready(()) => {
+                        // task 完成,future 已 drop;减计数,可能允许 run 退出
+                        self.inner.alive.fetch_sub(1, Ordering::SeqCst);
+                    }
                 }
             }
         }
     }
 }
 ```
+
+注意:用 `run_until_idle()` 而不是无限 `run()`——示例程序结束时能正常退出。真 Tokio 的 runtime 是无限的(它要等 IO 事件),教学版本里不退出会让读者迷惑"程序为什么卡住"。
 
 测试:
 
@@ -184,7 +203,7 @@ for i in 0..5 {
         println!("task {}", i);
     });
 }
-mini.run();
+mini.run_until_idle();
 ```
 
 ✅ 检查点:能并发跑多个任务。
@@ -198,7 +217,7 @@ use std::time::{Duration, Instant};
 use std::collections::BinaryHeap;
 use std::cmp::Reverse;
 
-struct TimerEntry { deadline: Instant, waker: Waker }
+struct TimerEntry { deadline: Instant, slot: Arc<Mutex<Option<Waker>>> }
 impl Ord for TimerEntry { fn cmp(&self, o: &Self) -> std::cmp::Ordering { self.deadline.cmp(&o.deadline) } }
 impl PartialOrd for TimerEntry { fn partial_cmp(&self, o: &Self) -> Option<std::cmp::Ordering> { Some(self.cmp(o)) } }
 impl Eq for TimerEntry {}
@@ -208,13 +227,19 @@ struct Timers { heap: Mutex<BinaryHeap<Reverse<TimerEntry>>> }
 
 pub struct Sleep {
     deadline: Instant,
+    slot: Arc<Mutex<Option<Waker>>>,   // 共享 waker 槽,timer 线程从这里取最新 waker
     registered: bool,
     timers: Arc<Timers>,
 }
 
 impl Sleep {
     pub fn new(timers: Arc<Timers>, dur: Duration) -> Self {
-        Sleep { deadline: Instant::now() + dur, registered: false, timers }
+        Sleep {
+            deadline: Instant::now() + dur,
+            slot: Arc::new(Mutex::new(None)),
+            registered: false,
+            timers,
+        }
     }
 }
 
@@ -222,10 +247,22 @@ impl Future for Sleep {
     type Output = ();
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
         if Instant::now() >= self.deadline { return Poll::Ready(()); }
+
+        // 关键:每次 poll 都用 will_wake 判断是否需要刷新 waker。
+        // Future 契约允许调度器在不同 poll 用不同 waker(任务在 worker 间迁移会发生),
+        // 如果只在首次 poll 固定 waker,后续可能唤醒错了 waker → 任务挂死。
+        {
+            let mut slot = self.slot.lock().unwrap();
+            match &*slot {
+                Some(old) if old.will_wake(cx.waker()) => {}    // 相同,免 clone
+                _ => *slot = Some(cx.waker().clone()),
+            }
+        }
+
         if !self.registered {
             self.timers.heap.lock().unwrap().push(Reverse(TimerEntry {
                 deadline: self.deadline,
-                waker: cx.waker().clone(),
+                slot: self.slot.clone(),                          // timer 持槽,到点取最新 waker
             }));
             self.registered = true;
         }
@@ -233,6 +270,14 @@ impl Future for Sleep {
     }
 }
 ```
+
+`TimerEntry` 也得同步改成持 slot 而不是直接持 waker:
+
+```rust,ignore
+struct TimerEntry { deadline: Instant, slot: Arc<Mutex<Option<Waker>>> }
+```
+
+timer 线程到点时 `if let Some(w) = entry.slot.lock().unwrap().take() { w.wake(); }`——这样总能拿到**最近一次 poll 注册的 waker**。生产级 runtime 通常用 `futures::task::AtomicWaker` 做这个槽,免一次锁。
 
 executor 加 timer pump 线程:
 
@@ -244,7 +289,7 @@ fn timer_thread(timers: Arc<Timers>) {
         while let Some(Reverse(top)) = heap.peek() {
             if top.deadline <= now {
                 let Reverse(e) = heap.pop().unwrap();
-                e.waker.wake();
+                if let Some(w) = e.slot.lock().unwrap().take() { w.wake(); }
             } else { break; }
         }
         drop(heap);
@@ -260,6 +305,8 @@ fn timer_thread(timers: Arc<Timers>) {
 ---
 
 ## 20.6 Step 4:实现 channel
+
+教学版本是**单生产者 / 单消费者 (SPSC)**:`Sender<T>` 不 `Clone`,一旦 sender drop 就关闭 channel。把它升级到真 mpsc 是本章习题之一——核心区别是要用 sender 计数(`Arc::strong_count` 或独立 `AtomicUsize`),**最后一个 sender drop 才关闭**。
 
 ```rust,ignore
 use std::collections::VecDeque;

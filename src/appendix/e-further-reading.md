@@ -20,7 +20,7 @@
 
 - **Rust Atomics and Locks** —— Mara Bos(rustc 主席之一)。**写并发库的必读**。从原子操作 → Mutex / RwLock / Condvar 内部 → memory ordering 一步步搭。
 - **The Rustonomicon** —— 官方写的"unsafe rust 黑魔法"。在线免费:<https://doc.rust-lang.org/nomicon/>。
-- **Zero To Production In Rust** —— Luca Palmieri。手把手用 axum / sqlx / sqlx / 测试驱动写一个真实的邮件订阅服务。生产级实践教材。
+- **Zero To Production In Rust** —— Luca Palmieri。手把手用 axum / sqlx / 测试驱动写一个真实的邮件订阅服务。生产级实践教材。
 
 ### 领域专用
 
@@ -54,7 +54,7 @@ Rust by Example          https://doc.rust-lang.org/rust-by-example/
 - **fasterthanli.me**(Amos)—— 长文教学,深入到字节级别,写得非常清楚。系列 "Declarative macros" / "Pin and suffering" 是经典。
 - **Aleksey Kladov(matklad)**(rust-analyzer 作者)—— 简洁、深刻、工程导向。
 - **without.boats**(原 Rust async 主要设计者之一)—— 关于 Pin / async / Future 的设计原因。
-- **fasterthanlime.dev** / **Yoshua Wuyts**(`tide` 作者,async 思考者)
+- **Yoshua Wuyts**(`tide` 作者,async 思考者)
 - **Niko Matsakis** —— rustc 主席之一,语言设计文章。
 - **Smallcultfollowing**(Niko 个人博客的别名)
 

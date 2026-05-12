@@ -215,7 +215,7 @@ fn main() { Pancakes::hello(); }
 struct Request {
     url: String,
     method: String,
-    timeout_ms: Option<u64>,
+    timeout_ms: u64,
 }
 
 let r = Request::builder()
@@ -225,12 +225,14 @@ let r = Request::builder()
     .build()?;
 ```
 
+> **注意**:这个简化版**对所有字段都生成 `Option<#ty>` 槽位**,build 时 ok_or 报错。这意味着原本就是 `Option<T>` 的字段会被二次包成 `Option<Option<T>>`——setter 也得传 `Option<T>`,使用体验差。**真 `derive_builder` crate 会识别 `Option<T>` 字段做特殊处理**(本章习题之一)。为了示例自洽,目标 struct 不要混 `Option` 字段。
+
 ### 实现
 
 ```rust,ignore
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, Data, DeriveInput, Fields, Type};
+use syn::{parse_macro_input, spanned::Spanned, Data, DeriveInput, Fields};
 
 #[proc_macro_derive(Builder)]
 pub fn derive_builder(input: TokenStream) -> TokenStream {
@@ -238,9 +240,17 @@ pub fn derive_builder(input: TokenStream) -> TokenStream {
     let name = &input.ident;
     let builder_name = format_ident!("{}Builder", name);
 
-    let fields = if let Data::Struct(s) = &input.data {
-        if let Fields::Named(f) = &s.fields { &f.named } else { panic!("named fields required") }
-    } else { panic!("struct required") };
+    // 用 syn::Error::to_compile_error 替代 panic!——错误带 span,定位到 token,
+    // 用户看到的是 "expected named struct" 而不是 "proc-macro derive panicked"。
+    let fields = match &input.data {
+        Data::Struct(s) => match &s.fields {
+            Fields::Named(f) => &f.named,
+            other => return syn::Error::new(other.span(), "Builder requires named fields")
+                .to_compile_error().into(),
+        },
+        _ => return syn::Error::new_spanned(&input.ident, "Builder can only derive on structs")
+            .to_compile_error().into(),
+    };
 
     let field_names: Vec<_> = fields.iter().map(|f| &f.ident).collect();
     let field_types: Vec<_> = fields.iter().map(|f| &f.ty).collect();
@@ -281,7 +291,7 @@ pub fn derive_builder(input: TokenStream) -> TokenStream {
 }
 ```
 
-这是个简化版,真实的 [`derive_builder`](https://crates.io/crates/derive_builder) 还支持 `#[builder(...)]` attribute 控制行为(default value、setter rename、setter prefix 等)。
+这是个简化版,真实的 [`derive_builder`](https://crates.io/crates/derive_builder) 还支持 `#[builder(...)]` attribute 控制行为(default value、setter rename、setter prefix、识别 `Option<T>` 字段不二次包装等)。
 
 ---
 
